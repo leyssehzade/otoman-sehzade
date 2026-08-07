@@ -1,4 +1,4 @@
-const CACHE_NAME = 'otoman-v3';
+const CACHE_NAME = 'otoman-v4';
 const ASSETS = [
   './',
   './index.html',
