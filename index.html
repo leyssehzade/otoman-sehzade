@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OTOMAN - Araç Takip ve Akıllı Hatırlatıcı</title>
+  <meta name="description" content="Aracınızın Tüm Bakım ve Takip Yükünü Hafifletin.">
+  <meta name="theme-color" content="#6366f1">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- ── MERKEZ POPUP ────────────────────────────────────── -->
+  <div id="centerPopup" class="center-popup">
+    <div id="popupIcon" class="popup-icon">⚠️</div>
+    <div id="popupMessage" class="popup-message">Mesaj</div>
+    <button onclick="closeCenterPopup()" class="btn-primary" style="margin-top:16px;width:100%;justify-content:center;">Tamam</button>
+  </div>
+
+  <!-- ── HEADER ─────────────────────────────────────────── -->
+  <header class="glass">
+    <div class="brand">
+      <div class="brand-icon">🚗</div>
+      <span>OTOMAN</span>
+    </div>
+    <div id="userInfoHeader" style="display:none;align-items:center;gap:10px;">
+      <span id="userDisplayName" style="font-weight:600;font-size:0.9rem;"></span>
+      <button onclick="handleLogout()" class="btn-secondary" style="padding:6px 14px;font-size:0.85rem;">Çıkış</button>
+    </div>
+  </header>
+
+  <!-- ── MAIN ───────────────────────────────────────────── -->
+  <main class="container">
+
+    <!-- AUTH VIEW -->
+    <div id="authView" class="auth-page">
+      <div class="auth-card glass">
+
+        <!-- Logo -->
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="font-size:3rem;margin-bottom:6px;">🚗</div>
+          <h1 style="font-size:1.9rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px;">OTOMAN</h1>
+          <p style="color:var(--text-muted);font-size:0.9rem;">Aracınızın tüm bakım ve takip yükünü hafifletin.</p>
+        </div>
+
+        <!-- Auth Sekmeleri -->
+        <div class="auth-tabs">
+          <button id="tabLogin" class="auth-tab active" onclick="showAuthTab('login')">Giriş Yap</button>
+          <button id="tabRegister" class="auth-tab" onclick="showAuthTab('register')">Kayıt Ol</button>
+        </div>
+
+        <!-- GİRİŞ FORMU -->
+        <div id="panelLogin">
+          <div class="form-group">
+            <label class="form-label">E-Posta</label>
+            <input type="email" id="loginEmail" class="form-input" placeholder="ornek@email.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Şifre</label>
+            <input type="password" id="loginPassword" class="form-input" placeholder="••••••••">
+          </div>
+          <div style="text-align:right;margin-bottom:18px;">
+            <a href="#" id="forgotLink" onclick="openForgotPassword(); return false;" style="color:var(--primary);font-size:0.85rem;font-weight:600;text-decoration:none;">Şifremi Unuttum?</a>
+          </div>
+          <button onclick="handleLogin()" class="btn-primary" style="width:100%;justify-content:center;padding:14px;">Giriş Yap</button>
+          <p style="text-align:center;margin-top:16px;font-size:0.85rem;color:var(--text-muted);">
+            Demo: <strong>demo@otoman.com</strong> / <strong>Demo1234</strong>
+          </p>
+        </div>
+
+        <!-- KAYIT FORMU -->
+        <div id="panelRegister" style="display:none;">
+          <div style="display:flex;gap:12px;">
+            <div class="form-group" style="flex:1;">
+              <label class="form-label">İsim</label>
+              <input type="text" id="regFirstName" class="form-input" placeholder="Ahmet">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label class="form-label">Soyisim</label>
+              <input type="text" id="regLastName" class="form-input" placeholder="Yılmaz">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">E-Posta</label>
+            <input type="email" id="regEmail" class="form-input" placeholder="ornek@email.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Şifre <span style="font-size:0.75rem;color:var(--text-muted);">(Min 8, 1 büyük, 1 küçük, 1 rakam)</span></label>
+            <input type="password" id="regPassword" class="form-input" placeholder="••••••••">
+          </div>
+          <div style="display:flex;gap:12px;">
+            <div class="form-group" style="flex:1;">
+              <label class="form-label">Yaş</label>
+              <input type="number" id="regAge" class="form-input" placeholder="30" min="16" max="100">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label class="form-label">Cinsiyet</label>
+              <select id="regGender" class="form-select">
+                <option value="Bay">Bay</option>
+                <option value="Bayan">Bayan</option>
+              </select>
+            </div>
+          </div>
+          <button onclick="handleRegister()" class="btn-primary" style="width:100%;justify-content:center;padding:14px;">Kayıt Ol</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- APP VIEW -->
+    <div id="appView" style="display:none;">
+
+      <!-- Ana Sekmeler -->
+      <div class="nav-tabs">
+        <button id="tabGarage" class="tab-btn active" onclick="switchMainTab('garage')">🚗 Garajım</button>
+        <button id="tabReminders" class="tab-btn" onclick="switchMainTab('reminders')">⏰ Hatırlatıcılar</button>
+        <button id="tabExpenses" class="tab-btn" onclick="switchMainTab('expenses')">💰 Masraflar</button>
+      </div>
+
+      <!-- Garaj -->
+      <div id="garagePanel">
+        <div class="section-header">
+          <h2 class="section-title">🚗 Araçlarım</h2>
+          <button onclick="openVehicleModal()" class="btn-primary">+ Yeni Araç Ekle</button>
+        </div>
+        <div id="vehicleGrid" class="grid-cards"></div>
+      </div>
+
+      <!-- Hatırlatıcılar -->
+      <div id="remindersPanel" style="display:none;">
+        <div class="section-header">
+          <h2 class="section-title">⏰ Hatırlatıcılar</h2>
+          <div style="display:flex;gap:8px;">
+            <button onclick="sendTestNotification()" class="btn-secondary" style="padding:8px 14px;font-size:0.85rem;">🔔 Test Bildirimi</button>
+            <button onclick="openReminderModal()" class="btn-primary">+ Yeni Ekle</button>
+          </div>
+        </div>
+        <div id="remindersGrid" class="grid-cards"></div>
+      </div>
+
+      <!-- Masraflar -->
+      <div id="expensesPanel" style="display:none;">
+        <div class="section-header">
+          <h2 class="section-title">💰 Masraf Takibi</h2>
+          <button onclick="openExpenseModal()" class="btn-primary">+ Masraf Ekle</button>
+        </div>
+        <div class="glass" style="padding:24px;border-radius:var(--radius-lg);margin-bottom:24px;">
+          <h4 style="margin-bottom:16px;">Aylık Harcama Özeti</h4>
+          <div style="height:250px;position:relative;"><canvas id="expenseChart"></canvas></div>
+        </div>
+        <div id="expensesList" class="grid-cards"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!--  MODALLER                                              -->
+  <!-- ══════════════════════════════════════════════════════ -->
+
+  <!-- Şifremi Unuttum - E-posta -->
+  <div id="modalForgotEmail" class="modal-overlay">
+    <div class="modal-content glass-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">📧 Şifre Sıfırlama</h3>
+        <button class="close-btn" onclick="closeModal('modalForgotEmail')">&times;</button>
+      </div>
+      <p style="color:var(--text-muted);margin-bottom:18px;font-size:0.9rem;">Kayıtlı e-posta adresinize 6 haneli doğrulama kodu göndereceğiz.</p>
+      <div class="form-group">
+        <label class="form-label">E-Posta Adresi</label>
+        <input type="email" id="forgotEmailInput" class="form-input" placeholder="ornek@email.com">
+      </div>
+      <button onclick="handleSendOTP()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Kod Gönder</button>
+    </div>
+  </div>
+
+  <!-- OTP Doğrulama (Popup 1) -->
+  <div id="modalOTP" class="modal-overlay">
+    <div class="modal-content glass-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">🔐 OTP Doğrulama</h3>
+        <button class="close-btn" onclick="closeModal('modalOTP')">&times;</button>
+      </div>
+      <p style="color:var(--text-muted);margin-bottom:18px;font-size:0.9rem;">E-posta adresinize gönderilen doğrulama kodunu girin.</p>
+      <div class="form-group">
+        <input type="text" id="otpCodeInput" class="form-input" placeholder="Kod girin" maxlength="8" style="text-align:center;letter-spacing:6px;font-size:1.4rem;font-weight:700;">
+      </div>
+      <button onclick="handleVerifyOTP()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Doğrula</button>
+    </div>
+  </div>
+
+  <!-- Yeni Şifre (Popup 2) -->
+  <div id="modalNewPassword" class="modal-overlay">
+    <div class="modal-content glass-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">🔑 Yeni Şifre Oluştur</h3>
+        <button class="close-btn" onclick="closeModal('modalNewPassword')">&times;</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Yeni Şifre</label>
+        <input type="password" id="newPasswordInput" class="form-input" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Yeni Şifre (Tekrar)</label>
+        <input type="password" id="confirmNewPasswordInput" class="form-input" placeholder="••••••••">
+      </div>
+      <button onclick="handleSetNewPassword()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Şifreyi Güncelle</button>
+    </div>
+  </div>
+
+  <!-- Araç Modal -->
+  <div id="modalVehicle" class="modal-overlay">
+    <div class="modal-content glass-modal">
+      <div class="modal-header">
+        <h3 id="vehicleModalTitle" class="modal-title">🚗 Araç Ekle</h3>
+        <button class="close-btn" onclick="closeModal('modalVehicle')">&times;</button>
+      </div>
+      <input type="hidden" id="vehicleEditId">
+      <div class="form-group">
+        <label class="form-label">Plaka</label>
+        <input type="text" id="vehPlate" class="form-input" placeholder="34 ABC 123" style="text-transform:uppercase;">
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div class="form-group" style="flex:1;">
+          <label class="form-label">Marka</label>
+          <input type="text" id="vehBrand" class="form-input" placeholder="Volkswagen">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label class="form-label">Model</label>
+          <input type="text" id="vehModel" class="form-input" placeholder="Golf">
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div class="form-group" style="flex:1;">
+          <label class="form-label">Yıl</label>
+          <input type="number" id="vehYear" class="form-input" placeholder="2020" min="1950" max="2030">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label class="form-label">Güncel KM</label>
+          <input type="number" id="vehKm" class="form-input" placeholder="85000" min="0">
+        </div>
+      </div>
+      <button onclick="handleSaveVehicle()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;margin-top:6px;">Kaydet</button>
+    </div>
+  </div>
+
+  <!-- KM Güncelle Modal -->
+  <div id="modalUpdateKm" class="modal-overlay">
+    <div class="modal-content glass-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">⚡ Kilometre Güncelle</h3>
+        <button class="close-btn" onclick="closeModal('modalUpdateKm')">&times;</button>
+      </div>
+      <input type="hidden" id="updateKmVehicleId">
+      <div class="form-group">
+        <label class="form-label">Yeni Güncel KM</label>
+        <input type="number" id="newKmInput" class="form-input" placeholder="90000" min="0">
+      </div>
+      <button onclick="handleUpdateKm()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Güncelle</button>
+    </div>
+  </div>
+
+  <!-- Hatırlatıcı Modal -->
+  <div id="modalReminder" class="modal-overlay">
+    <div class="modal-content glass-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">⏰ Hatırlatıcı Ekle</h3>
+        <button class="close-btn" onclick="closeModal('modalReminder')">&times;</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Araç</label>
+        <select id="remVehicleSelect" class="form-select"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tür</label>
+        <select id="remType" class="form-select" onchange="toggleReminderFields()">
+          <option value="muayene">Muayene</option>
+          <option value="sigorta">Trafik Sigortası</option>
+          <option value="kasko">Kasko</option>
+          <option value="mtv">MTV</option>
+          <option value="bakim">Periyodik Bakım (KM)</option>
+          <option value="diger">Diğer</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Başlık</label>
+        <input type="text" id="remTitle" class="form-input" placeholder="Örn: Yıllık Muayene">
+      </div>
+      <div id="remDateField" class="form-group">
+        <label class="form-label">Hedef Tarih</label>
+        <input type="date" id="remTargetDate" class="form-input">
+      </div>
+      <div id="remKmField" class="form-group" style="display:none;">
+        <label class="form-label">Hedef KM</label>
+        <input type="number" id="remTargetKm" class="form-input" placeholder="110000">
+      </div>
+      <button onclick="handleSaveReminder()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Kaydet</button>
+    </div>
+  </div>
+
+  <!-- Masraf Modal -->
+  <div id="modalExpense" class="modal-overlay">
+    <div class="modal-content glass-modal">
+      <div class="modal-header">
+        <h3 class="modal-title">💰 Masraf Ekle</h3>
+        <button class="close-btn" onclick="closeModal('modalExpense')">&times;</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Araç</label>
+        <select id="expVehicleSelect" class="form-select"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Kategori</label>
+        <select id="expCategory" class="form-select">
+          <option>Yakıt</option><option>Bakım</option><option>Sigorta</option><option>Yıkama</option><option>Diğer</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <div class="form-group" style="flex:1;">
+          <label class="form-label">Tutar (TL)</label>
+          <input type="number" id="expAmount" class="form-input" placeholder="1500" step="0.01">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label class="form-label">Tarih</label>
+          <input type="date" id="expDate" class="form-input">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Araç KM (o anki)</label>
+        <input type="number" id="expKm" class="form-input" placeholder="86000">
+      </div>
+      <button onclick="handleSaveExpense()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Ekle</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>
