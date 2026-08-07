@@ -264,10 +264,15 @@ async function handleRegister() {
         saveLocalUser({ id: data.user.id, email, password: pass, first_name: firstName, last_name: lastName, age, gender });
       }
 
-      // Kayıt başarılı -> Giriş sekmesine yönlendir
-      document.getElementById("loginEmail").value = email;
-      document.getElementById("loginPassword").value = pass;
-      showPopup("Kayıt başarılı! Giriş ekranına yönlendiriliyorsunuz.", true);
+      // E-posta onayı bekliyor mu kontrol et (Confirm email AÇIK ise session null gelir)
+      if (!data.session) {
+        showPopup("Kayıt başarılı! E-posta adresinize bir doğrulama bağlantısı gönderildi. Lütfen e-postanızı onaylayıp giriş yapın.", true);
+      } else {
+        // Doğrulama kapalıysa doğrudan giriş sekmesine yönlendir
+        document.getElementById("loginEmail").value = email;
+        document.getElementById("loginPassword").value = pass;
+        showPopup("Kayıt başarılı! Giriş ekranına yönlendiriliyorsunuz.", true);
+      }
 
       // Kayıt formunu temizle
       document.getElementById("regFirstName").value = "";
@@ -276,7 +281,7 @@ async function handleRegister() {
       document.getElementById("regPassword").value = "";
       document.getElementById("regAge").value = "";
 
-      setTimeout(() => showAuthTab("login"), 1200);
+      setTimeout(() => showAuthTab("login"), 1800);
     }
   } else {
     // Yerel Mod Kayıt
