@@ -87,8 +87,9 @@ module.exports = async (req, res) => {
               clearTimeout(timer);
               const status = err.statusCode || 0;
               const msg = (err.message || '').slice(0, 80);
-              if (status === 403 || status === 404 || status === 410) resolve({ res: 'dead', status, msg });
-              else resolve({ res: 'error', status, msg });
+              const body = (err.body || '').slice(0, 200);
+              if (status === 403 || status === 404 || status === 410) resolve({ res: 'dead', status, msg, body });
+              else resolve({ res: 'error', status, msg, body });
             }
           });
       });
