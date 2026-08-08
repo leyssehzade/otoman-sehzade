@@ -82,7 +82,7 @@ module.exports = async (req, res) => {
             if (!done) {
               done = true;
               clearTimeout(timer);
-              if (err.statusCode === 404 || err.statusCode === 410) resolve('dead');
+              if (err.statusCode === 404 || err.statusCode === 410 || err.statusCode === 403) resolve('dead');
               else resolve('error:' + (err.statusCode || err.message));
             }
           });
