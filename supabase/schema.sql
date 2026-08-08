@@ -1,6 +1,8 @@
 -- ====================================================================
 -- ANTIGRAVITY - ARAÇ TAKİP PWA: SUPABASE SCHEME & POLICIES (SQL)
 -- ====================================================================
+-- Bu dosya tekrar çalıştırılabilir (idempotent):
+-- her CREATE POLICY'den önce DROP POLICY IF EXISTS bulunur.
 
 -- 1. Profiles Tablosu (Kullanıcı Detayları)
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -70,19 +72,23 @@ ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 -- --------------------------------------------------------------------
 -- Profiles Policies
 -- --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile" 
   ON public.profiles FOR SELECT 
   USING (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Anyone can insert profile during signup" ON public.profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile" 
   ON public.profiles FOR INSERT 
   WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" 
   ON public.profiles FOR UPDATE 
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can delete own profile" ON public.profiles;
 CREATE POLICY "Users can delete own profile" 
   ON public.profiles FOR DELETE 
   USING (auth.uid() = id);
@@ -90,18 +96,22 @@ CREATE POLICY "Users can delete own profile"
 -- --------------------------------------------------------------------
 -- Vehicles Policies
 -- --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can view own vehicles" ON public.vehicles;
 CREATE POLICY "Users can view own vehicles" 
   ON public.vehicles FOR SELECT 
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own vehicles" ON public.vehicles;
 CREATE POLICY "Users can insert own vehicles" 
   ON public.vehicles FOR INSERT 
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own vehicles" ON public.vehicles;
 CREATE POLICY "Users can update own vehicles" 
   ON public.vehicles FOR UPDATE 
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own vehicles" ON public.vehicles;
 CREATE POLICY "Users can delete own vehicles" 
   ON public.vehicles FOR DELETE 
   USING (auth.uid() = user_id);
@@ -109,6 +119,7 @@ CREATE POLICY "Users can delete own vehicles"
 -- --------------------------------------------------------------------
 -- Reminders Policies
 -- --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can view reminders for own vehicles" ON public.reminders;
 CREATE POLICY "Users can view reminders for own vehicles" 
   ON public.reminders FOR SELECT 
   USING (
@@ -119,6 +130,7 @@ CREATE POLICY "Users can view reminders for own vehicles"
     )
   );
 
+DROP POLICY IF EXISTS "Users can insert reminders for own vehicles" ON public.reminders;
 CREATE POLICY "Users can insert reminders for own vehicles" 
   ON public.reminders FOR INSERT 
   WITH CHECK (
@@ -129,6 +141,7 @@ CREATE POLICY "Users can insert reminders for own vehicles"
     )
   );
 
+DROP POLICY IF EXISTS "Users can update reminders for own vehicles" ON public.reminders;
 CREATE POLICY "Users can update reminders for own vehicles" 
   ON public.reminders FOR UPDATE 
   USING (
@@ -139,6 +152,7 @@ CREATE POLICY "Users can update reminders for own vehicles"
     )
   );
 
+DROP POLICY IF EXISTS "Users can delete reminders for own vehicles" ON public.reminders;
 CREATE POLICY "Users can delete reminders for own vehicles" 
   ON public.reminders FOR DELETE 
   USING (
@@ -152,6 +166,7 @@ CREATE POLICY "Users can delete reminders for own vehicles"
 -- --------------------------------------------------------------------
 -- FCM Tokens Policies
 -- --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can manage own FCM tokens" ON public.fcm_tokens;
 CREATE POLICY "Users can manage own FCM tokens" 
   ON public.fcm_tokens FOR ALL 
   USING (auth.uid() = user_id);
@@ -159,6 +174,7 @@ CREATE POLICY "Users can manage own FCM tokens"
 -- --------------------------------------------------------------------
 -- Expenses Policies
 -- --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can view own expenses" ON public.expenses;
 CREATE POLICY "Users can view own expenses" 
   ON public.expenses FOR SELECT 
   USING (
@@ -169,6 +185,7 @@ CREATE POLICY "Users can view own expenses"
     )
   );
 
+DROP POLICY IF EXISTS "Users can insert own expenses" ON public.expenses;
 CREATE POLICY "Users can insert own expenses" 
   ON public.expenses FOR INSERT 
   WITH CHECK (
@@ -179,6 +196,7 @@ CREATE POLICY "Users can insert own expenses"
     )
   );
 
+DROP POLICY IF EXISTS "Users can delete own expenses" ON public.expenses;
 CREATE POLICY "Users can delete own expenses" 
   ON public.expenses FOR DELETE 
   USING (
