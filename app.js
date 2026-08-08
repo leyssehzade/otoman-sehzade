@@ -11,7 +11,7 @@ try {
   if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   }
-} catch (e) { console.warn("Supabase demo mode:", e); }
+} catch (e) { console.warn("Supabase init error:", e); }
 
 // ── STATE ─────────────────────────────────────────────────────
 let currentUser    = null;
@@ -21,35 +21,11 @@ let reminders      = [];
 let expenses       = [];
 let expChart       = null;
 
-// ── LOCAL STORAGE YARDIMCILARI ─────────────────────────────────
-function getLocalUsers() {
-  const users = localStorage.getItem("otoman_users");
-  if (!users) {
-    const defaultUsers = [{
-      id: "demo",
-      email: "demo@otoman.com",
-      password: "Demo1234",
-      first_name: "Demo",
-      last_name: "Sürücü",
-      age: 30,
-      gender: "Bay"
-    }];
-    localStorage.setItem("otoman_users", JSON.stringify(defaultUsers));
-    return defaultUsers;
-  }
-  try {
-    return JSON.parse(users);
-  } catch (e) {
-    return [];
-  }
-}
+// ── PENDING VERIFICATION STATE ────────────────────────────────
+let pendingVerificationEmail = "";
+let pendingProfileData       = null;
 
-function saveLocalUser(user) {
-  const users = getLocalUsers();
-  users.push(user);
-  localStorage.setItem("otoman_users", JSON.stringify(users));
-}
-
+// ── LOCAL STORAGE (DATA ONLY — NO PASSWORDS) ──────────────────
 function saveLocalData() {
   if (!sb && currentUser) {
     localStorage.setItem(`otoman_vehicles_${currentUser.id}`, JSON.stringify(vehicles));
@@ -68,6 +44,9 @@ function initApp() {
     };
   }
 
+  // OTP input setup
+  setupOtpInputs();
+
   // Masraf tarihi varsayılan
   const d = document.getElementById("expDate");
   if (d) d.value = new Date().toISOString().slice(0, 10);
@@ -85,8 +64,19 @@ function initApp() {
 
   if (sb) {
     sb.auth.getSession().then(({ data: { session } }) => {
-      if (session) { currentUser = session.user; afterLogin(); }
-      else showAuth();
+      if (session && session.user) {
+        // E-posta doğrulanmış mı kontrol et
+        if (session.user.email_confirmed_at) {
+          currentUser = session.user;
+          afterLogin();
+        } else {
+          // Doğrulanmamış kullanıcı — oturumu kapat ve auth ekranını göster
+          sb.auth.signOut();
+          showAuth();
+        }
+      } else {
+        showAuth();
+      }
     });
     sb.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
@@ -98,22 +88,25 @@ function initApp() {
         history.replaceState(null, "", window.location.pathname + window.location.search);
         return;
       }
-      if (session) { currentUser = session.user; afterLogin(); }
-      else { currentUser = null; showAuth(); }
+      if (session && session.user) {
+        // E-posta doğrulanmış mı kontrol et
+        if (session.user.email_confirmed_at) {
+          currentUser = session.user;
+          afterLogin();
+        }
+        // Doğrulanmamışsa hiçbir şey yapma (verify sayfasında kalacak)
+      } else {
+        currentUser = null;
+        currentProfile = null;
+        // Verify sayfasındaysa onu gizle
+        hideVerifyEmail();
+        showAuth();
+      }
     });
   } else {
-    // Otomatik oturum açma (Local Mode)
-    const savedSession = localStorage.getItem("otoman_active_session");
-    if (savedSession) {
-      try {
-        const { user, profile } = JSON.parse(savedSession);
-        currentUser = user;
-        currentProfile = profile;
-        afterLogin();
-        return;
-      } catch (e) {}
-    }
+    // Supabase olmadan uygulama çalışamaz
     showAuth();
+    showPopup("Supabase bağlantısı kurulamadı. Lütfen internet bağlantınızı kontrol edin.");
   }
 }
 
@@ -128,6 +121,39 @@ function showAuth() {
   document.getElementById("authView").style.display = "flex";
   document.getElementById("appView").style.display  = "none";
   document.getElementById("userInfoHeader").style.display = "none";
+  const verifyView = document.getElementById("verifyEmailView");
+  if (verifyView) verifyView.style.display = "none";
+}
+
+function hideVerifyEmail() {
+  const verifyView = document.getElementById("verifyEmailView");
+  if (verifyView) verifyView.style.display = "none";
+}
+
+function showVerifyEmail(email) {
+  pendingVerificationEmail = email;
+  document.getElementById("authView").style.display = "none";
+  document.getElementById("appView").style.display  = "none";
+  document.getElementById("userInfoHeader").style.display = "none";
+
+  const verifyView = document.getElementById("verifyEmailView");
+  verifyView.style.display = "flex";
+
+  // E-posta adresini göster
+  const emailDisplay = document.getElementById("verifyEmailAddress");
+  if (emailDisplay) emailDisplay.textContent = email;
+
+  // OTP input alanlarını temizle
+  const otpInputs = document.querySelectorAll(".otp-box");
+  otpInputs.forEach(input => { input.value = ""; });
+  if (otpInputs.length > 0) otpInputs[0].focus();
+
+  // Resend butonunu etkinleştir
+  const resendBtn = document.getElementById("btnResendVerification");
+  if (resendBtn) {
+    resendBtn.disabled = false;
+    resendBtn.textContent = "Kodu Tekrar Gönder";
+  }
 }
 
 async function afterLogin() {
@@ -135,6 +161,7 @@ async function afterLogin() {
     const { data } = await sb.from("profiles").select("*").eq("id", currentUser.id).single();
     if (data) currentProfile = data;
   }
+  hideVerifyEmail();
   document.getElementById("authView").style.display = "none";
   document.getElementById("appView").style.display  = "block";
   document.getElementById("userInfoHeader").style.display = "flex";
@@ -148,9 +175,10 @@ async function afterLogin() {
 
 async function handleLogout() {
   if (sb) await sb.auth.signOut();
-  localStorage.removeItem("otoman_active_session");
   currentUser = null; currentProfile = null;
   vehicles = []; reminders = []; expenses = [];
+  pendingVerificationEmail = "";
+  pendingProfileData = null;
   showAuth();
 }
 
@@ -170,37 +198,34 @@ async function handleLogin() {
 
   if (!email || !pass) { showPopup("Lütfen e-posta ve şifrenizi giriniz."); return; }
 
-  if (sb) {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-    if (error) {
-      // Yerel kullanıcı kontrolü (Fallback)
-      const users = getLocalUsers();
-      const user = users.find(u => u.email.toLowerCase() === email && u.password === pass);
-      if (user) {
-        currentUser    = { id: user.id, email: user.email };
-        currentProfile = { first_name: user.first_name, last_name: user.last_name, age: user.age, gender: user.gender };
-        localStorage.setItem("otoman_active_session", JSON.stringify({ user: currentUser, profile: currentProfile }));
-        afterLogin();
-        return;
-      }
-      showPopup("E-posta veya şifreniz hatalı");
-      return;
-    }
-    currentUser = data.user;
-    afterLogin();
-  } else {
-    // Yerel Mod Giriş
-    const users = getLocalUsers();
-    const user = users.find(u => u.email.toLowerCase() === email && u.password === pass);
-    if (user) {
-      currentUser    = { id: user.id, email: user.email };
-      currentProfile = { first_name: user.first_name, last_name: user.last_name, age: user.age, gender: user.gender };
-      localStorage.setItem("otoman_active_session", JSON.stringify({ user: currentUser, profile: currentProfile }));
-      afterLogin();
-    } else {
-      showPopup("E-posta veya şifreniz hatalı");
-    }
+  if (!sb) {
+    showPopup("Supabase bağlantısı kurulamadı. Lütfen internet bağlantınızı kontrol edin.");
+    return;
   }
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) {
+    showPopup("E-posta veya şifreniz hatalı.");
+    return;
+  }
+
+  // E-posta doğrulanmış mı kontrol et
+  if (!data.user.email_confirmed_at) {
+    // Oturumu kapat — doğrulanmamış kullanıcı giriş yapamaz
+    await sb.auth.signOut();
+    // Profil verisini sessionStorage'dan oku (varsa)
+    const storedProfile = sessionStorage.getItem("otoman_pending_profile");
+    if (storedProfile) {
+      try { pendingProfileData = JSON.parse(storedProfile); } catch(e) {}
+    }
+    showPopup("Lütfen giriş yapmadan önce e-posta adresinizi doğrulayın.");
+    pendingVerificationEmail = email;
+    setTimeout(() => showVerifyEmail(email), 1500);
+    return;
+  }
+
+  currentUser = data.user;
+  afterLogin();
 }
 
 // ── KAYIT ─────────────────────────────────────────────────────
@@ -216,97 +241,47 @@ async function handleRegister() {
     showPopup("Lütfen ad, soyad, e-posta ve şifre alanlarını doldurun."); return;
   }
 
-  if (pass.length < 4) {
-    showPopup("Şifre en az 4 karakter olmalıdır.");
+  if (pass.length < 8 || !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(pass)) {
+    showPopup("Şifre en az 8 karakter, 1 büyük harf, 1 küçük harf ve 1 rakam içermelidir.");
     return;
   }
 
-  if (sb) {
-    const { data, error } = await sb.auth.signUp({
-      email, password: pass,
-      options: { data: { first_name: firstName, last_name: lastName } }
-    });
-    if (error) {
-      if (error.message.includes("email rate limit exceeded") || error.status === 429) {
-        // Limit aşıldığında yerel modda kaydet (Kullanıcı engellenmesin)
-        const newUser = { id: "usr_" + Date.now(), email, password: pass, first_name: firstName, last_name: lastName, age, gender };
-        saveLocalUser(newUser);
+  if (!sb) {
+    showPopup("Supabase bağlantısı kurulamadı. Lütfen internet bağlantınızı kontrol edin.");
+    return;
+  }
 
-        document.getElementById("loginEmail").value = email;
-        document.getElementById("loginPassword").value = pass;
-        showPopup("Kayıt başarılı! Giriş ekranına yönlendiriliyorsunuz.", true);
+  const { data, error } = await sb.auth.signUp({
+    email, password: pass,
+    options: { data: { first_name: firstName, last_name: lastName } }
+  });
 
-        document.getElementById("regFirstName").value = "";
-        document.getElementById("regLastName").value = "";
-        document.getElementById("regEmail").value = "";
-        document.getElementById("regPassword").value = "";
-        document.getElementById("regAge").value = "";
-
-        setTimeout(() => showAuthTab("login"), 1200);
-        return;
-      }
-      let msg = error.message;
-      if (msg.includes("User already registered")) {
-        msg = "Bu e-posta adresi ile zaten kayıtlı bir kullanıcı var.";
-      }
-      showPopup(msg);
+  if (error) {
+    if (error.message.includes("email rate limit exceeded") || error.status === 429) {
+      // Rate limit — BYPASS YAPMA, sadece hata göster
+      showPopup("Çok fazla doğrulama isteği gönderildi. Lütfen bir süre bekleyip tekrar deneyin.");
       return;
     }
-    if (data.user) {
-      await sb.from("profiles").insert([{
-        id: data.user.id, first_name: firstName, last_name: lastName,
-        email, age, gender
-      }]).catch(console.error);
-
-      // Supabase kaydı başarılı → yerel depoya da kaydet (şifre sıfırlama için)
-      const existingLocal = getLocalUsers().find(u => u.email.toLowerCase() === email);
-      if (!existingLocal) {
-        saveLocalUser({ id: data.user.id, email, password: pass, first_name: firstName, last_name: lastName, age, gender });
-      }
-
-      // E-posta onayı bekliyor mu kontrol et (Confirm email AÇIK ise session null gelir)
-      if (!data.session) {
-        showPopup("Kayıt başarılı! E-posta adresinize bir doğrulama bağlantısı gönderildi. Lütfen e-postanızı onaylayıp giriş yapın.", true);
-      } else {
-        // Doğrulama kapalıysa doğrudan giriş sekmesine yönlendir
-        document.getElementById("loginEmail").value = email;
-        document.getElementById("loginPassword").value = pass;
-        showPopup("Kayıt başarılı! Giriş ekranına yönlendiriliyorsunuz.", true);
-      }
-
-      // Kayıt formunu temizle
-      document.getElementById("regFirstName").value = "";
-      document.getElementById("regLastName").value = "";
-      document.getElementById("regEmail").value = "";
-      document.getElementById("regPassword").value = "";
-      document.getElementById("regAge").value = "";
-
-      setTimeout(() => showAuthTab("login"), 1800);
+    let msg = error.message;
+    if (msg.includes("User already registered")) {
+      msg = "Bu e-posta adresi ile zaten kayıtlı bir kullanıcı var.";
     }
-  } else {
-    // Yerel Mod Kayıt
-    const users = getLocalUsers();
-    const existing = users.find(u => u.email.toLowerCase() === email);
-    if (existing) {
-      showPopup("Bu e-posta adresi ile zaten kayıtlı bir hesap var.");
-      return;
-    }
+    showPopup(msg);
+    return;
+  }
 
-    const newUser = {
-      id: "usr_" + Date.now(),
-      email,
-      password: pass,
+  if (data.user) {
+    // Profil verilerini sessionStorage'a kaydet (şifre DEĞİL)
+    // Profil, e-posta doğrulamasından SONRA oluşturulacak
+    pendingProfileData = {
+      id: data.user.id,
       first_name: firstName,
       last_name: lastName,
-      age,
-      gender
+      email: email,
+      age: age,
+      gender: gender
     };
-    saveLocalUser(newUser);
-
-    // Kayıt başarılı -> Giriş alanlarını doldur ve Giriş sekmesine yönlendir
-    document.getElementById("loginEmail").value = email;
-    document.getElementById("loginPassword").value = pass;
-    showPopup("Kayıt başarılı! Giriş ekranına yönlendiriliyorsunuz.", true);
+    sessionStorage.setItem("otoman_pending_profile", JSON.stringify(pendingProfileData));
 
     // Kayıt formunu temizle
     document.getElementById("regFirstName").value = "";
@@ -315,8 +290,161 @@ async function handleRegister() {
     document.getElementById("regPassword").value = "";
     document.getElementById("regAge").value = "";
 
-    setTimeout(() => showAuthTab("login"), 1200);
+    // E-posta doğrulama sayfasına yönlendir
+    showPopup("Kayıt başarılı! E-posta adresinize bir doğrulama kodu gönderildi.", true);
+    setTimeout(() => showVerifyEmail(email), 1500);
   }
+}
+
+// ── E-POSTA DOĞRULAMA (OTP) ───────────────────────────────────
+function getOtpValue() {
+  const inputs = document.querySelectorAll(".otp-box");
+  let code = "";
+  inputs.forEach(input => { code += input.value; });
+  return code;
+}
+
+async function handleVerifyEmailOTP() {
+  const token = getOtpValue();
+
+  if (!token || token.length !== 8 || !/^\d{8}$/.test(token)) {
+    showPopup("Lütfen 8 haneli doğrulama kodunu eksiksiz giriniz.");
+    return;
+  }
+
+  if (!sb || !pendingVerificationEmail) {
+    showPopup("Bir hata oluştu. Lütfen sayfayı yenileyip tekrar deneyin.");
+    return;
+  }
+
+  const { data, error } = await sb.auth.verifyOtp({
+    email: pendingVerificationEmail,
+    token: token,
+    type: 'email'
+  });
+
+  if (error) {
+    showPopup("Geçersiz veya süresi dolmuş doğrulama kodu.");
+    return;
+  }
+
+  if (data.session && data.user) {
+    currentUser = data.user;
+
+    // Profili oluştur (e-posta doğrulaması sonrasında)
+    if (pendingProfileData) {
+      try {
+        // Önce profil var mı kontrol et (duplicate önleme)
+        const { data: existingProfile } = await sb.from("profiles")
+          .select("id").eq("id", currentUser.id).single();
+
+        if (!existingProfile) {
+          await sb.from("profiles").insert([{
+            id: pendingProfileData.id || currentUser.id,
+            first_name: pendingProfileData.first_name,
+            last_name: pendingProfileData.last_name,
+            email: pendingProfileData.email,
+            age: pendingProfileData.age,
+            gender: pendingProfileData.gender
+          }]);
+        }
+      } catch (e) {
+        console.warn("Profil oluşturma hatası:", e);
+      }
+      // Temizle
+      pendingProfileData = null;
+      sessionStorage.removeItem("otoman_pending_profile");
+    }
+
+    showPopup("E-posta adresiniz başarıyla doğrulandı!", true);
+    setTimeout(() => afterLogin(), 800);
+  } else {
+    showPopup("Doğrulama başarısız oldu. Lütfen tekrar deneyin.");
+  }
+}
+
+async function handleResendVerification() {
+  if (!sb || !pendingVerificationEmail) {
+    showPopup("Bir hata oluştu. Lütfen sayfayı yenileyip tekrar deneyin.");
+    return;
+  }
+
+  const resendBtn = document.getElementById("btnResendVerification");
+  if (resendBtn) {
+    resendBtn.disabled = true;
+    resendBtn.textContent = "Gönderiliyor...";
+  }
+
+  try {
+    const { error } = await sb.auth.resend({
+      type: 'signup',
+      email: pendingVerificationEmail
+    });
+
+    if (error) {
+      if (error.message.includes("rate") || error.status === 429) {
+        showPopup("Çok fazla doğrulama isteği gönderildi. Lütfen bir süre bekleyip tekrar deneyin.");
+      } else {
+        showPopup(error.message || "Kod gönderilirken bir hata oluştu.");
+      }
+    } else {
+      showPopup("Doğrulama kodu tekrar gönderildi.", true);
+    }
+  } catch (e) {
+    showPopup("Kod gönderilirken bir hata oluştu.");
+  }
+
+  // 60 saniye cooldown
+  if (resendBtn) {
+    let countdown = 60;
+    resendBtn.textContent = `Tekrar Gönder (${countdown}s)`;
+    const interval = setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        clearInterval(interval);
+        resendBtn.disabled = false;
+        resendBtn.textContent = "Kodu Tekrar Gönder";
+      } else {
+        resendBtn.textContent = `Tekrar Gönder (${countdown}s)`;
+      }
+    }, 1000);
+  }
+}
+
+function handleBackToLogin() {
+  pendingVerificationEmail = "";
+  pendingProfileData = null;
+  sessionStorage.removeItem("otoman_pending_profile");
+  showAuth();
+  showAuthTab("login");
+}
+
+// ── OTP INPUT NAVIGATION ──────────────────────────────────────
+function setupOtpInputs() {
+  const inputs = document.querySelectorAll(".otp-box");
+  inputs.forEach((input, index) => {
+    input.addEventListener("input", (e) => {
+      // Sadece rakam kabul et
+      e.target.value = e.target.value.replace(/[^0-9]/g, "");
+      if (e.target.value && index < inputs.length - 1) {
+        inputs[index + 1].focus();
+      }
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace" && !e.target.value && index > 0) {
+        inputs[index - 1].focus();
+      }
+    });
+    input.addEventListener("paste", (e) => {
+      e.preventDefault();
+      const pastedData = (e.clipboardData || window.clipboardData).getData("text").replace(/[^0-9]/g, "");
+      for (let i = 0; i < Math.min(pastedData.length, inputs.length); i++) {
+        inputs[i].value = pastedData[i];
+      }
+      const focusIdx = Math.min(pastedData.length, inputs.length - 1);
+      inputs[focusIdx].focus();
+    });
+  });
 }
 
 // ── ŞİFREMİ UNUTTUM (OTP DOĞRULAMA) ───────────────────────────
@@ -332,46 +460,32 @@ async function handleSendOTP() {
   if (!email) { showPopup("Lütfen e-posta adresinizi girin."); return; }
   resetEmail = email;
 
-  // Önce yerel kullanıcılarda ara
-  const localUsers = getLocalUsers();
-  const localUser  = localUsers.find(u => u.email.toLowerCase() === email);
-
-  let userExists = !!localUser;
-
-  if (!userExists && sb) {
-    // Supabase'de bu e-posta var mı? Yanlış şifreyle deneyerek kontrol et
-    const { error: loginErr } = await sb.auth.signInWithPassword({ email, password: "__check_only__" });
-    userExists = loginErr?.message?.includes("Invalid login credentials") ||
-                 loginErr?.message?.includes("invalid_credentials") ||
-                 loginErr?.status === 400;
-    if (userExists) {
-      // Supabase kullanıcısını yerel depoya ekle (şifresiz, sonra güncellenecek)
-      saveLocalUser({ id: "sb_" + Date.now(), email, password: "__sb__", first_name: "", last_name: "", age: 0, gender: "" });
-    }
-  }
-
-  if (!userExists) {
-    showPopup("Bu e-posta adresiyle kayıtlı hesap bulunamadı.");
+  if (!sb) {
+    showPopup("Supabase bağlantısı kurulamadı.");
     return;
   }
 
   // Supabase üzerinden şifre sıfırlama e-postası gönder
-  if (sb) {
-    try {
-      await sb.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + window.location.pathname
-      });
-    } catch (err) {
-      console.warn("Supabase e-posta gönderme hatası:", err);
+  try {
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+    if (error) {
+      if (error.status === 429 || (error.message && error.message.includes("rate"))) {
+        showPopup("Çok fazla istek gönderildi. Lütfen bir süre bekleyip tekrar deneyin.");
+        return;
+      }
     }
+  } catch (err) {
+    console.warn("Supabase e-posta gönderme hatası:", err);
   }
 
-  // Doğrulama kodlu modal'a yönlendir (Yeni şifre ekranına değil)
+  // Doğrulama kodlu modal'a yönlendir
   closeModal("modalForgotEmail");
   closeModal("modalNewPassword");
   document.getElementById("otpCodeInput").value = "";
   openModal("modalOTP");
-  showPopup("Doğrulama kodu e-posta adresinize gönderildi.", true);
+  showPopup("Eğer bu e-posta kayıtlıysa, doğrulama kodu gönderildi.", true);
 }
 
 async function handleVerifyOTP() {
@@ -417,41 +531,35 @@ async function handleSetNewPassword() {
     return;
   }
 
-  const emailToUpdate = resetEmail || document.getElementById("loginEmail").value.trim().toLowerCase();
-
-  // Yerel şifreyi güncelle
-  if (emailToUpdate) {
-    const users = getLocalUsers();
-    const idx = users.findIndex(u => u.email.toLowerCase() === emailToUpdate);
-    if (idx !== -1) {
-      const oldPass = users[idx].password;
-      users[idx].password = np;
-      localStorage.setItem("otoman_users", JSON.stringify(users));
-
-      // Supabase'de de güncelle: eski şifreyle giriş yap → session al → şifreyi değiştir
-      if (sb && oldPass && oldPass !== "__sb__") {
-        const { data: signInData } = await sb.auth.signInWithPassword({ email: emailToUpdate, password: oldPass });
-        if (signInData?.session) {
-          await sb.auth.updateUser({ password: np }).catch(() => {});
-        }
-      } else if (sb) {
-        // Session varsa direkt güncelle (recovery token ile gelen durum)
-        await sb.auth.updateUser({ password: np }).catch(() => {});
+  // Supabase session varsa (recovery token ile) direkt güncelle
+  if (sb) {
+    try {
+      const { error } = await sb.auth.updateUser({ password: np });
+      if (error) {
+        showPopup("Şifre güncellenirken bir hata oluştu: " + error.message);
+        return;
       }
-    } else {
-      // Yerel depoda yok ama Supabase session varsa direkt güncelle
-      if (sb) await sb.auth.updateUser({ password: np }).catch(() => {});
+    } catch (e) {
+      showPopup("Şifre güncellenirken bir hata oluştu.");
+      return;
     }
   }
 
   closeModal("modalNewPassword");
   showPopup("Şifreniz başarıyla güncellendi! Yeni şifrenizle giriş yapabilirsiniz.", true);
 
-  if (emailToUpdate) {
-    document.getElementById("loginEmail").value = emailToUpdate;
+  // Oturumu kapat ve login'e yönlendir
+  if (sb) await sb.auth.signOut();
+  currentUser = null;
+
+  if (resetEmail) {
+    document.getElementById("loginEmail").value = resetEmail;
   }
   document.getElementById("loginPassword").value = "";
-  setTimeout(() => showAuthTab("login"), 1200);
+  setTimeout(() => {
+    showAuth();
+    showAuthTab("login");
+  }, 1200);
 }
 
 // ── POPUP ─────────────────────────────────────────────────────
@@ -502,36 +610,9 @@ async function loadData() {
     const storedR = localStorage.getItem(`otoman_reminders_${currentUser.id}`);
     const storedE = localStorage.getItem(`otoman_expenses_${currentUser.id}`);
 
-    if (storedV) {
-      vehicles = JSON.parse(storedV);
-    } else if (currentUser.id === "demo") {
-      vehicles = [
-        { id:"v1", plate:"34 OTO 01", brand:"Volkswagen", model:"Golf",  year:2021, current_km:45000 },
-        { id:"v2", plate:"06 OTO 02", brand:"BMW",        model:"320i",  year:2019, current_km:98500 }
-      ];
-      saveLocalData();
-    } else {
-      vehicles = [];
-    }
-
-    if (storedR) {
-      reminders = JSON.parse(storedR);
-    } else if (currentUser.id === "demo") {
-      reminders = [
-        { id:"r1", vehicle_id:"v1", type:"muayene", title:"Araç Muayenesi",    target_date: dayOffset(5),   is_completed:false },
-        { id:"r2", vehicle_id:"v1", type:"sigorta", title:"Trafik Sigortası",  target_date: dayOffset(3),   is_completed:false },
-        { id:"r3", vehicle_id:"v2", type:"bakim",   title:"Yağ Değişimi",      target_km:100000,            is_completed:false }
-      ];
-      saveLocalData();
-    } else {
-      reminders = [];
-    }
-
-    if (storedE) {
-      expenses = JSON.parse(storedE);
-    } else {
-      expenses = [];
-    }
+    vehicles  = storedV ? JSON.parse(storedV) : [];
+    reminders = storedR ? JSON.parse(storedR) : [];
+    expenses  = storedE ? JSON.parse(storedE) : [];
   }
   renderVehicles();
   renderReminders();
@@ -598,7 +679,7 @@ async function handleSaveVehicle() {
     const i = vehicles.findIndex(v => v.id === id);
     if (i !== -1) vehicles[i] = {...vehicles[i], plate, brand, model, year, current_km: km};
   } else {
-    const nv = { id:"v-"+Date.now(), user_id: currentUser?.id || "demo", plate, brand, model, year, current_km: km };
+    const nv = { id:"v-"+Date.now(), user_id: currentUser?.id, plate, brand, model, year, current_km: km };
     if (sb && currentUser) {
       const { data } = await sb.from("vehicles").insert([{user_id:currentUser.id,plate,brand,model,year,current_km:km}]).select().single();
       if (data) nv.id = data.id;

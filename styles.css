@@ -364,6 +364,41 @@ main.container {
 }
 .close-btn:hover { color: #fff; }
 
+/* ── OTP INPUT ─────────────────────────────────── */
+.otp-container {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 0 auto;
+  max-width: 380px;
+}
+
+.otp-box {
+  width: 40px;
+  height: 52px;
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 800;
+  font-family: var(--font);
+  border-radius: 12px;
+  border: 2px solid var(--glass-border);
+  background: rgba(10, 18, 40, 0.8);
+  color: #fff;
+  outline: none;
+  transition: all 0.25s ease;
+  caret-color: var(--primary);
+}
+
+.otp-box:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 16px var(--primary-glow);
+  background: rgba(15, 25, 50, 0.9);
+}
+
+.otp-box::selection {
+  background: var(--primary-glow);
+}
+
 /* ── ANIMATIONS ────────────────────────────────── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(10px); }
@@ -378,4 +413,6 @@ main.container {
   .grid-cards { grid-template-columns: 1fr; }
   .auth-card { padding: 24px; }
   .section-header { flex-direction: column; gap: 12px; align-items: flex-start; }
+  .otp-container { gap: 5px; }
+  .otp-box { width: 34px; height: 46px; font-size: 1.1rem; border-radius: 9px; }
 }
