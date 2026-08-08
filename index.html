@@ -116,7 +116,7 @@
         <div style="text-align:center;margin-bottom:24px;">
           <div style="font-size:3rem;margin-bottom:6px;">📧</div>
           <h1 style="font-size:1.6rem;font-weight:800;background:linear-gradient(135deg,#6366f1,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;">E-posta Doğrulama</h1>
-          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.5;">E-posta adresinize gönderilen<br>8 haneli doğrulama kodunu girin.</p>
+          <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.5;">E-posta adresinize gönderilen<br>6 haneli doğrulama kodunu girin.</p>
         </div>
 
         <!-- E-posta Adresi -->
@@ -124,11 +124,9 @@
           <span id="verifyEmailAddress" style="display:inline-block;background:rgba(99,102,241,0.15);color:var(--primary);padding:8px 18px;border-radius:10px;font-weight:700;font-size:0.92rem;letter-spacing:0.3px;"></span>
         </div>
 
-        <!-- 8 Haneli OTP Input -->
+        <!-- 6 Haneli OTP Input -->
         <div class="otp-container">
           <input type="text" class="otp-box" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
-          <input type="text" class="otp-box" maxlength="1" inputmode="numeric">
-          <input type="text" class="otp-box" maxlength="1" inputmode="numeric">
           <input type="text" class="otp-box" maxlength="1" inputmode="numeric">
           <input type="text" class="otp-box" maxlength="1" inputmode="numeric">
           <input type="text" class="otp-box" maxlength="1" inputmode="numeric">
@@ -376,7 +374,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});

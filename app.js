@@ -254,6 +254,15 @@ async function handleRegister() {
   const { data, error } = await sb.auth.signUp({
     email, password: pass,
     options: { data: { first_name: firstName, last_name: lastName } }
+    // emailRedirectTo is intentionally omitted — we use OTP code flow, not magic link
+  });
+
+  // Safe debug — no passwords/tokens logged
+  console.log("[OTOMAN] SIGNUP RESULT", {
+    hasUser: !!data?.user,
+    hasSession: !!data?.session,
+    emailConfirmedAt: data?.user?.email_confirmed_at ?? null,
+    error: error?.message ?? null
   });
 
   if (error) {
@@ -307,8 +316,8 @@ function getOtpValue() {
 async function handleVerifyEmailOTP() {
   const token = getOtpValue();
 
-  if (!token || token.length !== 8 || !/^\d{8}$/.test(token)) {
-    showPopup("Lütfen 8 haneli doğrulama kodunu eksiksiz giriniz.");
+  if (!token || token.length !== 6 || !/^\d{6}$/.test(token)) {
+    showPopup("Lütfen 6 haneli doğrulama kodunu eksiksiz giriniz.");
     return;
   }
 
