@@ -118,9 +118,7 @@ module.exports = async (req, res) => {
       notifications: notificationsToSend.length,
       subscriptions: (tokens || []).length,
       sent,
-      results,
-      debugSubject: VAPID_SUBJECT,
-      debugPubKey: (VAPID_PUBLIC_KEY || '').slice(0, 12) + '...'
+      results
     });
   } catch (err) {
     console.error("Cron Job Error:", err);
