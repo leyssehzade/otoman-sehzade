@@ -4,7 +4,7 @@
 
 const SUPABASE_URL     = "https://steqbfkehyighifaeavq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_DHglJW9GOwYPrgpqyF0q6A_S11NIuXo";
-const VAPID_PUBLIC_KEY = "YOUR_VAPID_PUBLIC_KEY";
+const VAPID_PUBLIC_KEY = "BH_RHFvS8_EfrJmEHyCdrYz7r9cVYziyUY3lx5r_Td5B16F0p1AgM46L1cN2iEMP5SvhwNKc1czqR3TQ7IXgNhw";
 
 // Supabase yalnızca gerçek URL girildiğinde başlatılır
 let sb = null;
