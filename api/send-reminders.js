@@ -4,7 +4,6 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const webpush = require('web-push');
-const vapidHelper = require('web-push/src/vapid-helper');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://YOUR_SUPABASE_PROJECT_ID.supabase.co";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "YOUR_SERVICE_ROLE_KEY";
@@ -73,13 +72,11 @@ module.exports = async (req, res) => {
     });
 
     // 3. Send notifications
-    const reqOrigin = "https://" + (req.headers.host || "otoman-sehzade.vercel.app");
-
-    const sendWithTimeout = (sub, payload, sendOpts) => {
+    const sendWithTimeout = (sub, payload) => {
       return new Promise((resolve) => {
         let done = false;
         const timer = setTimeout(() => { if (!done) { done = true; resolve({ res: 'timeout' }); } }, 8000);
-        webpush.sendNotification(sub, payload, sendOpts || {})
+        webpush.sendNotification(sub, payload)
           .then(() => { if (!done) { done = true; clearTimeout(timer); resolve({ res: 'ok' }); } })
           .catch((err) => {
             if (!done) {
@@ -105,16 +102,7 @@ module.exports = async (req, res) => {
         try { sub = JSON.parse(rawSub); } catch (e) { return { host: 'bad-json', res: 'bad' }; }
         let host = 'unknown';
         try { host = new URL(sub.endpoint).hostname; } catch (e) {}
-        // Apple (web.push.apple.com) requires the VAPID "aud" claim to be the web app origin.
-        // web-push always writes its own Authorization, so disable its VAPID and send ours.
-        let sendOpts;
-        if (host === 'web.push.apple.com') {
-          const appleHeaders = vapidHelper.getVapidHeaders(
-            reqOrigin, VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, 'aes128gcm'
-          );
-          sendOpts = { vapidDetails: null, headers: { Authorization: appleHeaders.Authorization } };
-        }
-        const out = await sendWithTimeout(sub, payload, sendOpts);
+        const out = await sendWithTimeout(sub, payload);
         if (out.res === 'ok') sent++;
         else if (out.res === 'dead') {
           await supabase.from('fcm_tokens').delete().eq('token', rawSub);
