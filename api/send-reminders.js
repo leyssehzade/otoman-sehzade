@@ -72,33 +72,48 @@ module.exports = async (req, res) => {
     });
 
     // 3. Send notifications
+    const sendWithTimeout = (sub, payload) => {
+      return new Promise((resolve) => {
+        let done = false;
+        const timer = setTimeout(() => { if (!done) { done = true; resolve('timeout'); } }, 8000);
+        webpush.sendNotification(sub, payload)
+          .then(() => { if (!done) { done = true; clearTimeout(timer); resolve('ok'); } })
+          .catch((err) => {
+            if (!done) {
+              done = true;
+              clearTimeout(timer);
+              if (err.statusCode === 404 || err.statusCode === 410) resolve('dead');
+              else resolve('error:' + (err.statusCode || err.message));
+            }
+          });
+      });
+    };
+
     let sent = 0;
+    const results = [];
     for (const n of notificationsToSend) {
-      for (const rawSub of subsByUser[n.userId] || []) {
+      const subs = subsByUser[n.userId] || [];
+      const payload = JSON.stringify({ title: n.title, body: n.body });
+      const batch = subs.map(async (rawSub) => {
         let sub;
-        try {
-          sub = JSON.parse(rawSub);
-        } catch (e) {
-          continue;
+        try { sub = JSON.parse(rawSub); } catch (e) { return 'bad'; }
+        const res = await sendWithTimeout(sub, payload);
+        if (res === 'ok') sent++;
+        else if (res === 'dead') {
+          await supabase.from('fcm_tokens').delete().eq('token', rawSub);
         }
-        try {
-          await webpush.sendNotification(sub, JSON.stringify({ title: n.title, body: n.body }));
-          sent++;
-        } catch (err) {
-          console.error("Push send error:", err.message);
-          // Abonelik geçersizse tablodan temizle
-          if (err.statusCode === 404 || err.statusCode === 410) {
-            await supabase.from('fcm_tokens').delete().eq('token', rawSub);
-          }
-        }
-      }
+        return res;
+      });
+      results.push(...await Promise.all(batch));
     }
 
     return res.status(200).json({
       success: true,
       message: `Tarama tamamlandı. ${notificationsToSend.length} adet hatırlatıcı bildirimi sıraya alındı, ${sent} adet gönderildi.`,
       notifications: notificationsToSend.length,
-      sent
+      subscriptions: (tokens || []).length,
+      sent,
+      results
     });
   } catch (err) {
     console.error("Cron Job Error:", err);
