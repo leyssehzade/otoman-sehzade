@@ -171,7 +171,7 @@ async function afterLogin() {
       `${currentProfile.first_name} ${currentProfile.last_name}`;
   }
   loadData();
-  askNotificationPermission();
+  await askNotificationPermission();
   subscribeToPush();
 }
 
@@ -891,11 +891,14 @@ async function askNotificationPermission() {
 }
 
 async function subscribeToPush() {
-  if (!sb || !currentUser) return;
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  if (Notification.permission !== "granted") return;
-  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.startsWith("YOUR_")) return;
+  if (!sb || !currentUser) return false;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.startsWith("YOUR_")) return false;
   try {
+    if (Notification.permission !== "granted") {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") return false;
+    }
     const reg = await navigator.serviceWorker.ready;
     const existing = await reg.pushManager.getSubscription();
     const sub = existing || await reg.pushManager.subscribe({
@@ -906,9 +909,21 @@ async function subscribeToPush() {
       { user_id: currentUser.id, token: JSON.stringify(sub) },
       { onConflict: "token" }
     );
+    return true;
   } catch (e) {
     console.warn("Push aboneliği kurulamadı:", e);
+    return false;
   }
+}
+
+async function enableNotifications() {
+  if (!sb || !currentUser) {
+    showPopup("Lütfen önce giriş yapın.");
+    return;
+  }
+  const ok = await subscribeToPush();
+  if (ok) showPopup("Bildirimler açıldı. Hatırlatmalar artık bu cihaza gelecek.", true);
+  else showPopup("Bildirimler açılamadı. İzni kabul edip tekrar deneyin.");
 }
 
 function urlBase64ToUint8Array(base64String) {
