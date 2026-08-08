@@ -96,13 +96,15 @@ module.exports = async (req, res) => {
       const payload = JSON.stringify({ title: n.title, body: n.body });
       const batch = subs.map(async (rawSub) => {
         let sub;
-        try { sub = JSON.parse(rawSub); } catch (e) { return 'bad'; }
+        try { sub = JSON.parse(rawSub); } catch (e) { return { host: 'bad-json', res: 'bad' }; }
+        let host = 'unknown';
+        try { host = new URL(sub.endpoint).hostname; } catch (e) {}
         const res = await sendWithTimeout(sub, payload);
         if (res === 'ok') sent++;
         else if (res === 'dead') {
           await supabase.from('fcm_tokens').delete().eq('token', rawSub);
         }
-        return res;
+        return { host, res };
       });
       results.push(...await Promise.all(batch));
     }
