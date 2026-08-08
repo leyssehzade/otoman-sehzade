@@ -206,27 +206,12 @@
         <h3 class="modal-title">📧 Şifre Sıfırlama</h3>
         <button class="close-btn" onclick="closeModal('modalForgotEmail')">&times;</button>
       </div>
-      <p style="color:var(--text-muted);margin-bottom:18px;font-size:0.9rem;">Kayıtlı e-posta adresinize 6 haneli doğrulama kodu göndereceğiz.</p>
+      <p style="color:var(--text-muted);margin-bottom:18px;font-size:0.9rem;">Kayıtlı e-posta adresinize şifre sıfırlama bağlantısı göndereceğiz.</p>
       <div class="form-group">
         <label class="form-label">E-Posta Adresi</label>
         <input type="email" id="forgotEmailInput" class="form-input" placeholder="ornek@email.com">
       </div>
-      <button onclick="handleSendOTP()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Kod Gönder</button>
-    </div>
-  </div>
-
-  <!-- OTP Doğrulama (Popup 1) -->
-  <div id="modalOTP" class="modal-overlay">
-    <div class="modal-content glass-modal">
-      <div class="modal-header">
-        <h3 class="modal-title">🔐 OTP Doğrulama</h3>
-        <button class="close-btn" onclick="closeModal('modalOTP')">&times;</button>
-      </div>
-      <p style="color:var(--text-muted);margin-bottom:18px;font-size:0.9rem;">E-posta adresinize gönderilen doğrulama kodunu girin.</p>
-      <div class="form-group">
-        <input type="text" id="otpCodeInput" class="form-input" placeholder="Kod girin" maxlength="8" style="text-align:center;letter-spacing:6px;font-size:1.4rem;font-weight:700;">
-      </div>
-      <button onclick="handleVerifyOTP()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Doğrula</button>
+      <button onclick="handleSendOTP()" class="btn-primary" style="width:100%;justify-content:center;padding:12px;">Sıfırlama Bağlantısı Gönder</button>
     </div>
   </div>
 

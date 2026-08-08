@@ -45,6 +45,17 @@ CREATE TABLE IF NOT EXISTS public.fcm_tokens (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 5. Expenses Tablosu (Masraf Takibi)
+CREATE TABLE IF NOT EXISTS public.expenses (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  vehicle_id UUID REFERENCES public.vehicles(id) ON DELETE CASCADE,
+  category TEXT NOT NULL,
+  amount NUMERIC(12,2) NOT NULL,
+  date DATE NOT NULL,
+  km INT DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ====================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ====================================================================
@@ -54,6 +65,7 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reminders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fcm_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 
 -- --------------------------------------------------------------------
 -- Profiles Policies
@@ -62,13 +74,17 @@ CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT 
   USING (auth.uid() = id);
 
-DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
-CREATE POLICY "Anyone can insert profile during signup" 
+DROP POLICY IF EXISTS "Anyone can insert profile during signup" ON public.profiles;
+CREATE POLICY "Users can insert own profile" 
   ON public.profiles FOR INSERT 
-  WITH CHECK (true);
+  WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "Users can update own profile" 
   ON public.profiles FOR UPDATE 
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can delete own profile" 
+  ON public.profiles FOR DELETE 
   USING (auth.uid() = id);
 
 -- --------------------------------------------------------------------
@@ -140,9 +156,43 @@ CREATE POLICY "Users can manage own FCM tokens"
   ON public.fcm_tokens FOR ALL 
   USING (auth.uid() = user_id);
 
+-- --------------------------------------------------------------------
+-- Expenses Policies
+-- --------------------------------------------------------------------
+CREATE POLICY "Users can view own expenses" 
+  ON public.expenses FOR SELECT 
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.vehicles 
+      WHERE vehicles.id = expenses.vehicle_id 
+      AND vehicles.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert own expenses" 
+  ON public.expenses FOR INSERT 
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.vehicles 
+      WHERE vehicles.id = expenses.vehicle_id 
+      AND vehicles.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete own expenses" 
+  ON public.expenses FOR DELETE 
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.vehicles 
+      WHERE vehicles.id = expenses.vehicle_id 
+      AND vehicles.user_id = auth.uid()
+    )
+  );
+
 -- ====================================================================
 -- USEFUL INDEXES FOR PERFORMANCE
 -- ====================================================================
 CREATE INDEX IF NOT EXISTS idx_vehicles_user_id ON public.vehicles(user_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_vehicle_id ON public.reminders(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_fcm_tokens_user_id ON public.fcm_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_vehicle_id ON public.expenses(vehicle_id);

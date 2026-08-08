@@ -4,6 +4,7 @@
 
 const SUPABASE_URL     = "https://steqbfkehyighifaeavq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_DHglJW9GOwYPrgpqyF0q6A_S11NIuXo";
+const VAPID_PUBLIC_KEY = "YOUR_VAPID_PUBLIC_KEY";
 
 // Supabase yalnızca gerçek URL girildiğinde başlatılır
 let sb = null;
@@ -171,6 +172,7 @@ async function afterLogin() {
   }
   loadData();
   askNotificationPermission();
+  subscribeToPush();
 }
 
 async function handleLogout() {
@@ -300,7 +302,7 @@ async function handleRegister() {
     document.getElementById("regAge").value = "";
 
     // E-posta doğrulama sayfasına yönlendir
-    showPopup("Kayıt başarılı! E-posta adresinize bir doğrulama kodu gönderildi.", true);
+    showPopup("Mail adresinize şifre yenileme linki gönderildi.", true);
     setTimeout(() => showVerifyEmail(email), 1500);
   }
 }
@@ -456,7 +458,7 @@ function setupOtpInputs() {
   });
 }
 
-// ── ŞİFREMİ UNUTTUM (OTP DOĞRULAMA) ───────────────────────────
+// ── ŞİFREMİ UNUTTUM (LİNK İLE SIFIRLAMA) ──────────────────────
 let resetEmail = "";
 
 function openForgotPassword() {
@@ -474,60 +476,33 @@ async function handleSendOTP() {
     return;
   }
 
-  // Supabase üzerinden şifre sıfırlama e-postası gönder
+  // Supabase üzerinden şifre sıfırlama e-postası gönder (bağlantı içerir)
   try {
     const { error } = await sb.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin + window.location.pathname
     });
+    closeModal("modalForgotEmail");
     if (error) {
       if (error.status === 429 || (error.message && error.message.includes("rate"))) {
         showPopup("Çok fazla istek gönderildi. Lütfen bir süre bekleyip tekrar deneyin.");
         return;
       }
+      showPopup(error.message || "E-posta gönderilemedi.");
+      return;
     }
   } catch (err) {
+    closeModal("modalForgotEmail");
     console.warn("Supabase e-posta gönderme hatası:", err);
-  }
-
-  // Doğrulama kodlu modal'a yönlendir
-  closeModal("modalForgotEmail");
-  closeModal("modalNewPassword");
-  document.getElementById("otpCodeInput").value = "";
-  openModal("modalOTP");
-  showPopup("Eğer bu e-posta kayıtlıysa, doğrulama kodu gönderildi.", true);
-}
-
-async function handleVerifyOTP() {
-  const code = document.getElementById("otpCodeInput").value.trim();
-
-  if (!code) {
-    showPopup("Lütfen e-postanıza gönderilen doğrulama kodunu giriniz.");
+    showPopup("E-posta gönderilirken bir hata oluştu.");
     return;
   }
 
-  if (sb && resetEmail) {
-    const { data, error } = await sb.auth.verifyOtp({
-      email: resetEmail,
-      token: code,
-      type: 'recovery'
-    });
-    if (!error && (data?.session || data?.user)) {
-      if (data?.session) currentUser = data.session.user;
-
-      // Kod başarıyla doğrulandı -> OTP ekranını kapat ve Yeni Şifre ekranını aç
-      closeModal("modalOTP");
-      document.getElementById("newPasswordInput").value = "";
-      document.getElementById("confirmNewPasswordInput").value = "";
-      openModal("modalNewPassword");
-      showPopup("Kod başarıyla doğrulandı. Yeni şifrenizi belirleyin.", true);
-      return;
-    }
-  }
-
-  showPopup("Girdiğiniz doğrulama kodu hatalı veya süresi dolmuş.");
+  showPopup("Mail adresinize şifre yenileme linki gönderildi.", true);
 }
 
 async function handleSetNewPassword() {
+  if (!sb) { showPopup("Bağlantı kurulamadı."); return; }
+
   const np  = document.getElementById("newPasswordInput").value;
   const cnp = document.getElementById("confirmNewPasswordInput").value;
 
@@ -610,10 +585,12 @@ function switchMainTab(tab) {
 // ── VERİ YÜKLE ────────────────────────────────────────────────
 async function loadData() {
   if (sb && currentUser) {
-    const { data: v } = await sb.from("vehicles").select("*").eq("user_id", currentUser.id);
-    const { data: r } = await sb.from("reminders").select("*");
+    const { data: v } = await sb.from("vehicles").select("*").eq("user_id", currentUser.id).order("created_at");
+    const { data: r } = await sb.from("reminders").select("*").order("created_at");
+    const { data: e } = await sb.from("expenses").select("*").order("date", { ascending: false });
     vehicles  = v || [];
     reminders = r || [];
+    expenses  = e || [];
   } else if (currentUser) {
     const storedV = localStorage.getItem(`otoman_vehicles_${currentUser.id}`);
     const storedR = localStorage.getItem(`otoman_reminders_${currentUser.id}`);
@@ -626,11 +603,6 @@ async function loadData() {
   renderVehicles();
   renderReminders();
   renderExpenses();
-}
-
-function dayOffset(n) {
-  const d = new Date(); d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
 }
 
 // ── ARAÇLAR ───────────────────────────────────────────────────
@@ -646,13 +618,13 @@ function renderVehicles() {
     card.className = "vehicle-card glass";
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
-        <div class="plate-badge">🇹🇷 ${v.plate}</div>
+        <div class="plate-badge">🇹🇷 ${esc(v.plate)}</div>
         <div style="display:flex;gap:6px;">
           <button class="btn-secondary" style="padding:5px 10px;font-size:0.8rem;" onclick="openVehicleModal('${v.id}')">✏️</button>
           <button class="btn-danger" onclick="deleteVehicle('${v.id}')">🗑️</button>
         </div>
       </div>
-      <div style="font-size:1.2rem;font-weight:700;margin-bottom:3px;">${v.brand} ${v.model}</div>
+      <div style="font-size:1.2rem;font-weight:700;margin-bottom:3px;">${esc(v.brand)} ${esc(v.model)}</div>
       <div style="color:var(--text-muted);font-size:0.88rem;margin-bottom:14px;">Model Yılı: ${v.year}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--glass-border);padding-top:12px;">
         <div style="font-size:1.05rem;font-weight:700;color:var(--secondary);">⚡ ${v.current_km.toLocaleString("tr-TR")} KM</div>
@@ -746,7 +718,9 @@ function renderReminders() {
     let statusClass = "status-ok", statusLabel = "✅ Normal", detail = "";
 
     if (r.target_date) {
-      const diff = Math.ceil((new Date(r.target_date) - today) / 86400000);
+      const [yy, mm, dd] = r.target_date.split("-").map(Number);
+      const target = new Date(yy, mm - 1, dd);
+      const diff = Math.ceil((target - today) / 86400000);
       detail = `${r.target_date} · ${diff > 0 ? diff + " gün kaldı" : "⚠️ Süresi Doldu!"}`;
       if (diff <= 0)  { statusClass = "status-danger"; statusLabel = "🚨 Süresi Doldu!"; }
       else if (diff <= 7) { statusClass = "status-warn"; statusLabel = "⚠️ Yaklaşıyor!"; }
@@ -761,10 +735,10 @@ function renderReminders() {
     card.className = `reminder-card glass ${statusClass}`;
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <span style="font-size:0.77rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--secondary);">${r.type} · ${plate}</span>
+        <span style="font-size:0.77rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--secondary);">${esc(r.type)} · ${esc(plate)}</span>
         <span style="font-size:0.77rem;font-weight:700;background:rgba(255,255,255,0.1);padding:2px 8px;border-radius:6px;">${statusLabel}</span>
       </div>
-      <div style="font-size:1.05rem;font-weight:700;margin-bottom:5px;">${r.title}</div>
+      <div style="font-size:1.05rem;font-weight:700;margin-bottom:5px;">${esc(r.title)}</div>
       <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:14px;">${detail}</div>
       <button class="btn-danger" style="width:100%;" onclick="deleteReminder('${r.id}')">Tamamlandı / Sil</button>`;
     grid.appendChild(card);
@@ -774,7 +748,7 @@ function renderReminders() {
 function openReminderModal() {
   if (!vehicles.length) { showPopup("Önce Garaj sayfasından araç eklemelisiniz."); return; }
   const sel = document.getElementById("remVehicleSelect");
-  sel.innerHTML = vehicles.map(v => `<option value="${v.id}">${v.plate} – ${v.brand} ${v.model}</option>`).join("");
+  sel.innerHTML = vehicles.map(v => `<option value="${v.id}">${esc(v.plate)} – ${esc(v.brand)} ${esc(v.model)}</option>`).join("");
   document.getElementById("remTitle").value = "";
   document.getElementById("remTargetDate").value = "";
   document.getElementById("remTargetKm").value = "";
@@ -796,10 +770,13 @@ async function handleSaveReminder() {
   const target_km   = type === "bakim"  ? (parseInt(document.getElementById("remTargetKm").value) || null) : null;
   if (!title) { showPopup("Başlık alanını doldurun."); return; }
 
-  const nr = { id:"r-"+Date.now(), vehicle_id, type, title, target_date, target_km, is_completed:false };
+  const nr = { vehicle_id, type, title, target_date, target_km, is_completed:false };
   if (sb) {
-    const { data } = await sb.from("reminders").insert([nr]).select().single();
-    if (data) nr.id = data.id;
+    const { data, error } = await sb.from("reminders").insert([nr]).select().single();
+    if (error) { showPopup("Hatırlatıcı kaydedilemedi: " + error.message); return; }
+    nr.id = data.id;
+  } else {
+    nr.id = "r-" + Date.now();
   }
   reminders.push(nr);
   saveLocalData();
@@ -830,7 +807,7 @@ function renderExpenses() {
     el.style.cssText = "padding:16px 20px;border-radius:var(--radius-md);display:flex;justify-content:space-between;align-items:center;";
     el.innerHTML = `
       <div>
-        <div style="font-weight:700;">${e.category} <span style="font-size:0.8rem;color:var(--text-muted);">${v?.plate || ""}</span></div>
+        <div style="font-weight:700;">${esc(e.category)} <span style="font-size:0.8rem;color:var(--text-muted);">${esc(v?.plate || "")}</span></div>
         <div style="font-size:0.82rem;color:var(--text-muted);">${e.date} · ${(e.km||0).toLocaleString("tr-TR")} KM</div>
       </div>
       <div style="font-size:1.15rem;font-weight:800;color:var(--secondary);">₺${parseFloat(e.amount).toLocaleString("tr-TR")}</div>`;
@@ -841,20 +818,29 @@ function renderExpenses() {
 function openExpenseModal() {
   if (!vehicles.length) { showPopup("Önce Garaj sayfasından araç eklemelisiniz."); return; }
   const sel = document.getElementById("expVehicleSelect");
-  sel.innerHTML = vehicles.map(v => `<option value="${v.id}">${v.plate} – ${v.brand} ${v.model}</option>`).join("");
+  sel.innerHTML = vehicles.map(v => `<option value="${v.id}">${esc(v.plate)} – ${esc(v.brand)} ${esc(v.model)}</option>`).join("");
   document.getElementById("expAmount").value = "";
   document.getElementById("expKm").value = "";
   openModal("modalExpense");
 }
 
-function handleSaveExpense() {
+async function handleSaveExpense() {
   const vehicle_id = document.getElementById("expVehicleSelect").value;
   const category   = document.getElementById("expCategory").value;
   const amount     = parseFloat(document.getElementById("expAmount").value) || 0;
   const date       = document.getElementById("expDate").value;
   const km         = parseInt(document.getElementById("expKm").value) || 0;
   if (!amount || !date) { showPopup("Tutar ve tarih zorunludur."); return; }
-  expenses.push({ id:"e-"+Date.now(), vehicle_id, category, amount, date, km });
+
+  const ne = { vehicle_id, category, amount, date, km };
+  if (sb) {
+    const { data, error } = await sb.from("expenses").insert([ne]).select().single();
+    if (error) { showPopup("Masraf kaydedilemedi: " + error.message); return; }
+    ne.id = data.id;
+  } else {
+    ne.id = "e-" + Date.now();
+  }
+  expenses.push(ne);
   saveLocalData();
   closeModal("modalExpense");
   renderExpenses();
@@ -894,6 +880,38 @@ async function askNotificationPermission() {
   }
 }
 
+async function subscribeToPush() {
+  if (!sb || !currentUser) return;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  if (Notification.permission !== "granted") return;
+  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.startsWith("YOUR_")) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    const sub = existing || await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+    await sb.from("fcm_tokens").upsert(
+      { user_id: currentUser.id, token: JSON.stringify(sub) },
+      { onConflict: "token" }
+    );
+  } catch (e) {
+    console.warn("Push aboneliği kurulamadı:", e);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 async function sendTestNotification() {
   if (!("Notification" in window)) {
     showPopup("Bu cihaz yerel bildirimleri desteklemiyor.");
@@ -927,6 +945,10 @@ async function sendTestNotification() {
 }
 
 // ── YARDIMCI ─────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
 function emptyCard(msg) {
   return `<div class="glass" style="padding:28px;text-align:center;grid-column:1/-1;border-radius:var(--radius-lg);color:var(--text-muted);">${msg}</div>`;
 }
