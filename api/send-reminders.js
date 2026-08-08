@@ -72,18 +72,23 @@ module.exports = async (req, res) => {
     });
 
     // 3. Send notifications
-    const sendWithTimeout = (sub, payload) => {
+    const reqOrigin = "https://" + (req.headers.host || "otoman-sehzade.vercel.app");
+
+    const sendWithTimeout = (sub, payload, vapidHeaders) => {
       return new Promise((resolve) => {
         let done = false;
-        const timer = setTimeout(() => { if (!done) { done = true; resolve('timeout'); } }, 8000);
-        webpush.sendNotification(sub, payload)
-          .then(() => { if (!done) { done = true; clearTimeout(timer); resolve('ok'); } })
+        const timer = setTimeout(() => { if (!done) { done = true; resolve({ res: 'timeout' }); } }, 8000);
+        const sendOpts = vapidHeaders ? { headers: vapidHeaders } : {};
+        webpush.sendNotification(sub, payload, sendOpts)
+          .then(() => { if (!done) { done = true; clearTimeout(timer); resolve({ res: 'ok' }); } })
           .catch((err) => {
             if (!done) {
               done = true;
               clearTimeout(timer);
-              if (err.statusCode === 404 || err.statusCode === 410 || err.statusCode === 403) resolve('dead');
-              else resolve('error:' + (err.statusCode || err.message));
+              const status = err.statusCode || 0;
+              const msg = (err.message || '').slice(0, 80);
+              if (status === 403 || status === 404 || status === 410) resolve({ res: 'dead', status, msg });
+              else resolve({ res: 'error', status, msg });
             }
           });
       });
@@ -99,12 +104,16 @@ module.exports = async (req, res) => {
         try { sub = JSON.parse(rawSub); } catch (e) { return { host: 'bad-json', res: 'bad' }; }
         let host = 'unknown';
         try { host = new URL(sub.endpoint).hostname; } catch (e) {}
-        const res = await sendWithTimeout(sub, payload);
-        if (res === 'ok') sent++;
-        else if (res === 'dead') {
+        // Apple (web.push.apple.com) requires the VAPID "aud" claim to be the web app origin
+        const vapidHeaders = host === 'web.push.apple.com'
+          ? webpush.getVapidHeaders(reqOrigin, VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+          : undefined;
+        const out = await sendWithTimeout(sub, payload, vapidHeaders);
+        if (out.res === 'ok') sent++;
+        else if (out.res === 'dead') {
           await supabase.from('fcm_tokens').delete().eq('token', rawSub);
         }
-        return { host, res };
+        return { host, ...out };
       });
       results.push(...await Promise.all(batch));
     }
