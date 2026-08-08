@@ -205,6 +205,11 @@ async function handleLogin() {
     return;
   }
 
+  // iOS: izin istemi doğrudan kullanıcı etkileşimi içinde (await öncesi) istenmeli
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
   if (error) {
     showPopup("E-posta veya şifreniz hatalı.");
@@ -251,6 +256,11 @@ async function handleRegister() {
   if (!sb) {
     showPopup("Supabase bağlantısı kurulamadı. Lütfen internet bağlantınızı kontrol edin.");
     return;
+  }
+
+  // iOS: izin istemi doğrudan kullanıcı etkileşimi içinde (await öncesi) istenmeli
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
   }
 
   const { data, error } = await sb.auth.signUp({
