@@ -714,6 +714,25 @@ async function handleUpdateKm() {
 }
 
 // ── HATIRLATICILAR ────────────────────────────────────────────
+function toLocalInput(d) {
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function fmtDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function defaultNotifyAt() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return toLocalInput(d);
+}
+
 function renderReminders() {
   const grid = document.getElementById("remindersGrid");
   grid.innerHTML = "";
@@ -741,6 +760,10 @@ function renderReminders() {
       else if (diff <= 500) { statusClass = "status-warn"; statusLabel = "⚠️ Az Kaldı!"; }
     }
 
+    const notifyLine = r.notify_at
+      ? `<div style="font-size:0.8rem;color:var(--secondary);margin-bottom:14px;">🔔 Bildirim: ${fmtDateTime(r.notify_at)}${r.notified_at ? ' · Gönderildi ✅' : ''}</div>`
+      : '';
+
     const card = document.createElement("div");
     card.className = `reminder-card glass ${statusClass}`;
     card.innerHTML = `
@@ -750,6 +773,7 @@ function renderReminders() {
       </div>
       <div style="font-size:1.05rem;font-weight:700;margin-bottom:5px;">${esc(r.title)}</div>
       <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:14px;">${detail}</div>
+      ${notifyLine}
       <button class="btn-danger" style="width:100%;" onclick="deleteReminder('${r.id}')">Tamamlandı / Sil</button>`;
     grid.appendChild(card);
   });
@@ -762,6 +786,7 @@ function openReminderModal() {
   document.getElementById("remTitle").value = "";
   document.getElementById("remTargetDate").value = "";
   document.getElementById("remTargetKm").value = "";
+  document.getElementById("remNotifyAt").value = defaultNotifyAt();
   toggleReminderFields();
   openModal("modalReminder");
 }
@@ -778,9 +803,11 @@ async function handleSaveReminder() {
   const title       = document.getElementById("remTitle").value.trim();
   const target_date = type !== "bakim" ? (document.getElementById("remTargetDate").value || null) : null;
   const target_km   = type === "bakim"  ? (parseInt(document.getElementById("remTargetKm").value) || null) : null;
+  const notifyRaw   = document.getElementById("remNotifyAt").value;
+  const notify_at   = notifyRaw ? new Date(notifyRaw).toISOString() : null;
   if (!title) { showPopup("Başlık alanını doldurun."); return; }
 
-  const nr = { vehicle_id, type, title, target_date, target_km, is_completed:false };
+  const nr = { vehicle_id, type, title, target_date, target_km, notify_at, is_completed:false };
   if (sb) {
     const { data, error } = await sb.from("reminders").insert([nr]).select().single();
     if (error) { showPopup("Hatırlatıcı kaydedilemedi: " + error.message); return; }

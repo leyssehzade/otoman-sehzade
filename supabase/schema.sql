@@ -36,8 +36,15 @@ CREATE TABLE IF NOT EXISTS public.reminders (
   target_date DATE,
   target_km INT,
   is_completed BOOLEAN DEFAULT FALSE,
+  notify_at TIMESTAMP WITH TIME ZONE,   -- kullanıcının seçtiği bildirim zamanı (tarih + saat)
+  notified_at TIMESTAMP WITH TIME ZONE, -- bildirim gönderildiğinde doldurulur (tekrar engeller)
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Bildirim zamanı gelen ve henüz gönderilmemiş hatırlatıcıları hızlı bulmak için
+CREATE INDEX IF NOT EXISTS reminders_notify_idx
+  ON public.reminders(notify_at)
+  WHERE notified_at IS NULL AND is_completed = FALSE;
 
 -- 4. FCM Tokens Tablosu (Web Push Bildirimleri İçin)
 CREATE TABLE IF NOT EXISTS public.fcm_tokens (

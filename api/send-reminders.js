@@ -1,4 +1,4 @@
-// Vercel Serverless Function: Triggered nightly at 09:00 via Vercel Cron Job
+// Vercel Serverless Function: Triggered every minute via Supabase pg_cron
 // File: /api/send-reminders.js
 // Sends real Web Push notifications via the web-push library.
 
@@ -27,32 +27,46 @@ module.exports = async (req, res) => {
     if (remError) throw remError;
 
     const notificationsToSend = [];
-    const today = new Date();
+    const now = new Date();
 
     reminders.forEach(r => {
       if (!r.vehicles) return;
+      if (r.notified_at) return; // zaten bildirildi — tekrar gönderme
 
-      let isUrgent = false;
+      let due = false;
       let messageBody = "";
 
-      if (r.target_date) {
-        const targetD = new Date(r.target_date);
-        const diffDays = Math.ceil((targetD - today) / (1000 * 60 * 60 * 24));
-        if (diffDays <= 7) {
-          isUrgent = true;
-          messageBody = `${r.vehicles.plate} plakalı aracınızın ${r.title} işlemine ${diffDays <= 0 ? 'günü geçti!' : diffDays + ' gün kaldı!'}`;
+      if (r.notify_at) {
+        // Kullanıcının seçtiği bildirim zamanı geldi mi?
+        const notifyD = new Date(r.notify_at);
+        if (notifyD <= now) {
+          due = true;
+          messageBody = `${r.vehicles.plate} plakalı aracınızın ${r.title} işleminin zamanı geldi.`;
         }
-      } else if (r.target_km) {
-        const diffKm = r.target_km - r.vehicles.current_km;
-        if (diffKm <= 500) {
-          isUrgent = true;
-          messageBody = `${r.vehicles.plate} plakalı aracınızın ${r.title} bakımına ${diffKm <= 0 ? 'KM doldu!' : diffKm + ' KM kaldı!'}`;
+      } else {
+        // Eski kayıtlar için geriye dönük uyumluluk: acil pencere kontrolü
+        let isUrgent = false;
+        if (r.target_date) {
+          const targetD = new Date(r.target_date);
+          const diffDays = Math.ceil((targetD - now) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 7) {
+            isUrgent = true;
+            messageBody = `${r.vehicles.plate} plakalı aracınızın ${r.title} işlemine ${diffDays <= 0 ? 'günü geçti!' : diffDays + ' gün kaldı!'}`;
+          }
+        } else if (r.target_km) {
+          const diffKm = r.target_km - r.vehicles.current_km;
+          if (diffKm <= 500) {
+            isUrgent = true;
+            messageBody = `${r.vehicles.plate} plakalı aracınızın ${r.title} bakımına ${diffKm <= 0 ? 'KM doldu!' : diffKm + ' KM kaldı!'}`;
+          }
         }
+        due = isUrgent;
       }
 
-      if (isUrgent) {
+      if (due) {
         notificationsToSend.push({
           userId: r.vehicles.user_id,
+          reminderId: r.id,
           title: "🚨 OTOMAN Araç Hatırlatıcısı",
           body: messageBody
         });
@@ -110,6 +124,10 @@ module.exports = async (req, res) => {
         return { host, ...out };
       });
       results.push(...await Promise.all(batch));
+      // Bildirim denendi — tekrar gönderilmemesi için işaretle
+      await supabase.from('reminders')
+        .update({ notified_at: now.toISOString() })
+        .eq('id', n.reminderId);
     }
 
     return res.status(200).json({
